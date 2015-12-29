@@ -8,12 +8,26 @@ import sys
 import requests
 import json
 import Queue
-from bottle import get, request, run
+import datetime
+from bottle import post, request, run
 
 message_q = Queue.Queue()
 
-@get('/')
-def get_request():
+@post('/')
+def post_request():
+    data = request.json
+
+    if data:
+        if 'title' in data.keys():
+            message_q.put(('title', urllib.unquote(data['title'])))
+
+        if 'body' in data.keys():
+            body = data['body']
+            if type(body) is list:
+                body = '<br>'.join(body)
+
+            message_q.put(('body', urllib.unquote(body)))
+
     if request.query.title:
         message_q.put(('title', urllib.unquote(request.query.title)))
 
@@ -64,9 +78,13 @@ class Window(QtGui.QWidget):
         self.layout.addWidget(self.title)
 
         self.body = QtGui.QLabel(self)
-        self.body.setText("one\ntwo\nthree")
+        self.body.setText('one\ntwo\nthree')
         self.body.setAlignment(QtCore.Qt.AlignTop)
         self.layout.addWidget(self.body, 1)
+
+        self.updated = QtGui.QLabel(self)
+        self.updated.setText('')
+        self.layout.addWidget(self.updated)
 
         self.quit = QtGui.QPushButton('Quit', self)
         self.quit.clicked.connect(QtCore.QCoreApplication.instance().quit)
@@ -76,13 +94,20 @@ class Window(QtGui.QWidget):
         self.setWindowTitle('Test Window')
         self.showFullScreen()
 
+    def set_updated(self):
+        updated_date = datetime.datetime.now()
+        updated = updated_date.strftime('%Y-%m-%d %H:%M')
+        self.updated.setText(updated)
+
     def get_label_text(self, text):
         return '<span style="font-size: x-large;"><b>%s</b></span>' % text
 
     def set_title(self, text):
+        self.set_updated()
         self.title.setText(self.get_label_text(text))
 
     def set_body(self, text):
+        self.set_updated()
         self.body.setText(text)
 
     def connect_bus(self, message_bus):
