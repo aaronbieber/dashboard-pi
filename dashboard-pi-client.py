@@ -45,7 +45,7 @@ class Dashboard(object):
                          '',
                          self.get_fortune()]}
 
-        requests.post('http://pi.skynet.net:8080', json=data)
+        requests.post('http://localhost:8080', json=data)
 
 
 if __name__ == '__main__':
