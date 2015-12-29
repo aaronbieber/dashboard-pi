@@ -9,9 +9,34 @@ import requests
 import json
 import Queue
 import datetime
-from bottle import post, request, run
+from bottle import get, post, request, run
 
 message_q = Queue.Queue()
+
+@get('/message')
+def get_message():
+    return '''
+    <html>
+    <style>
+    body { font-family: Helvetica, Arial, sans-serif; }
+    input[type=text] { padding: 0.5em; font-size: larger; width: 600px; }
+    button { padding: 0.5em; font-size: x-large; }
+    </style>
+    <h1>Send Me a Message</h1>
+    <form action="/message" method="POST">
+    <input type="text" maxlength="60" name="message"/>
+    <button name="submit">Send</button>
+    </form>
+    </html>
+    '''
+
+@post('/message')
+def post_message():
+    if request.params.message:
+        message_q.put(('message', request.params.message))
+        return 'Message sent!'
+    else:
+        return 'You must enter a message, obviously.'
 
 @post('/')
 def post_request():
@@ -39,6 +64,7 @@ def post_request():
 class MessageBus(QtCore.QObject):
     set_title = QtCore.pyqtSignal(str)
     set_body = QtCore.pyqtSignal(str)
+    set_message = QtCore.pyqtSignal(str)
 
 
 class QueueConsumer(threading.Thread):
@@ -55,8 +81,10 @@ class QueueConsumer(threading.Thread):
                     self.bus.set_title.emit(value[1])
 
                 if value[0] == 'body':
-                    print(value[1])
                     self.bus.set_body.emit(value[1])
+
+                if value[0] == 'message':
+                    self.bus.set_message.emit(value[1])
 
                 if value[0] == 'command' and value[1] == 'end':
                     return
@@ -67,6 +95,14 @@ class QueueConsumer(threading.Thread):
 class Window(QtGui.QWidget):
     def __init__(self):
         super(Window, self).__init__()
+
+        self.setWindowTitle('Test Window')
+        palette = QtGui.QPalette()
+        palette.setColor(QtGui.QPalette.Window, QtCore.Qt.black)
+        palette.setColor(QtGui.QPalette.WindowText, QtCore.Qt.white)
+        palette.setColor(QtGui.QPalette.Button, QtCore.Qt.black)
+        palette.setColor(QtGui.QPalette.ButtonText, QtCore.Qt.white)
+        self.setPalette(palette)
 
         self.layout = QtGui.QVBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
@@ -82,6 +118,10 @@ class Window(QtGui.QWidget):
         self.body.setAlignment(QtCore.Qt.AlignTop)
         self.layout.addWidget(self.body, 1)
 
+        self.message = QtGui.QLabel(self)
+        self.message.setText('No message.')
+        self.layout.addWidget(self.message)
+
         self.updated = QtGui.QLabel(self)
         self.updated.setText('')
         self.layout.addWidget(self.updated)
@@ -91,13 +131,16 @@ class Window(QtGui.QWidget):
         self.quit.resize(100, 50)
         self.quit.move(370, 10)
 
-        self.setWindowTitle('Test Window')
         self.showFullScreen()
 
     def set_updated(self):
         updated_date = datetime.datetime.now()
         updated = updated_date.strftime('%Y-%m-%d %H:%M')
-        self.updated.setText(updated)
+        self.updated.setText('<small>%s</small>' % updated)
+
+    def set_message(self, text):
+        self.set_updated()
+        self.message.setText(text)
 
     def get_label_text(self, text):
         return '<span style="font-size: x-large;"><b>%s</b></span>' % text
@@ -114,6 +157,7 @@ class Window(QtGui.QWidget):
         self.bus = message_bus
         self.bus.set_title.connect(self.set_title)
         self.bus.set_body.connect(self.set_body)
+        self.bus.set_message.connect(self.set_message)
 
 
 class Main(threading.Thread):
