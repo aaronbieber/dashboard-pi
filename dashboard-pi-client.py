@@ -7,10 +7,15 @@ import textwrap
 import pyfscache
 import time
 import socket
+import signal
 
 cache = pyfscache.FSCache('cache', minutes=30)
 
 class Dashboard(object):
+    def __init__(self):
+        # Handle INT specially
+        signal.signal(signal.SIGINT, self.refresh)
+
     def get_fortune(self):
         fortune = subprocess.check_output(['fortune', '-s'])
         fortune = textwrap.wrap(fortune.replace('\n', ' '), 60)
@@ -35,6 +40,15 @@ class Dashboard(object):
             parts = resp.text.split(',')
             return (parts[0], parts[1])
 
+    def refresh(self, signum, frame):
+        self.update()
+        self.wait_and_update()
+
+    def wait_and_update(self):
+        while True:
+            time.sleep(5)
+            self.update()
+
     def update(self):
         stock = self.get_stock_price('W')
         stock_color = 'limegreen' if stock[1][0] == '+' else 'crimson'
@@ -55,7 +69,5 @@ class Dashboard(object):
 
 if __name__ == '__main__':
     d = Dashboard()
-
-    while True:
-        d.update()
-        time.sleep(600)
+    d.update()
+    d.wait_and_update()
