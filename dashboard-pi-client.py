@@ -46,7 +46,7 @@ class Dashboard(object):
 
     def wait_and_update(self):
         while True:
-            time.sleep(5)
+            time.sleep(600)
             self.update()
 
     def update(self):
