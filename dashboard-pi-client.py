@@ -6,6 +6,7 @@ import subprocess
 import textwrap
 import pyfscache
 import time
+import socket
 
 cache = pyfscache.FSCache('cache', minutes=30)
 
@@ -41,11 +42,15 @@ class Dashboard(object):
 
         data = {'title': 'Your Dashboard',
                 'body': ['<b>W:</b> $%s (<font color="%s">%s</font>)' % (stock[0], stock_color, stock[1]),
-                         '<b>Temp:</b> %s (%s/%s)' % (weather[0], weather[1], weather[2]),
+                         '<b>Temp:</b> %s&#8457; (%s/%s)' % (weather[0], weather[1], weather[2]),
                          '',
                          self.get_fortune()]}
 
-        requests.post('http://localhost:8080', json=data)
+        try:
+            requests.post('http://localhost:8080', json=data)
+        except requests.ConnectionError:
+            # It's OK, we'll survive.
+            pass
 
 
 if __name__ == '__main__':
