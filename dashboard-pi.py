@@ -138,24 +138,41 @@ class Window(QtGui.QWidget):
     def __init__(self):
         super(Window, self).__init__()
 
-        self.setWindowTitle('Test Window')
-        palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Window, QtCore.Qt.black)
-        palette.setColor(QtGui.QPalette.WindowText, QtCore.Qt.white)
-        palette.setColor(QtGui.QPalette.Button, QtCore.Qt.black)
-        palette.setColor(QtGui.QPalette.ButtonText, QtCore.Qt.white)
-        self.setPalette(palette)
+        self.setObjectName('mainWindow')
+        self.setWindowTitle('My Dashboard')
+        self.setStyleSheet(('#mainWindow {'
+                            '  background-color: black;'
+                            '}'
+                            'QLabel {'
+                            '  color: white;'
+                            '}'))
 
+        # Main window
         mainlayout = QtGui.QVBoxLayout(self)
         mainlayout.setContentsMargins(10, 10, 10, 10)
         mainlayout.setSpacing(10)
         self.setLayout(mainlayout)
 
-        self.title = QtGui.QLabel(self)
+        # Top row (title + quit button)
+        toprow = QtGui.QWidget()
+        toprowlayout = QtGui.QHBoxLayout()
+        toprowlayout.setSpacing(0)
+        toprowlayout.setContentsMargins(0, 0, 0, 0)
+        toprow.setLayout(toprowlayout)
+
+        self.title = QtGui.QLabel()
         self.title.setTextFormat(QtCore.Qt.RichText)
         self.title.setText(self.get_label_text('Ready!'))
-        mainlayout.addWidget(self.title)
+        toprowlayout.addWidget(self.title, 1)
 
+        self.quit = QtGui.QPushButton('Quit')
+        self.quit.clicked.connect(QtCore.QCoreApplication.instance().quit)
+        self.quit.setStyleSheet('padding: 10px')
+        toprowlayout.addWidget(self.quit)
+
+        mainlayout.addWidget(toprow)
+
+        # Main window widgets
         self.body = QtGui.QLabel(self)
         self.body.setText('one\ntwo\nthree')
         self.body.setAlignment(QtCore.Qt.AlignTop)
@@ -166,6 +183,7 @@ class Window(QtGui.QWidget):
         self.message.setStyleSheet('border: 1px solid black; border-bottom-color: #666666; color: white; padding-bottom: 5px')
         mainlayout.addWidget(self.message)
 
+        # Bottom row (updated timestamp + IP)
         bottomrow = QtGui.QWidget()
         bottomrowlayout = QtGui.QHBoxLayout()
         bottomrowlayout.setSpacing(0)
@@ -180,11 +198,6 @@ class Window(QtGui.QWidget):
         bottomrowlayout.addWidget(self.ip)
 
         mainlayout.addWidget(bottomrow)
-
-        self.quit = QtGui.QPushButton('Quit', self)
-        self.quit.clicked.connect(QtCore.QCoreApplication.instance().quit)
-        self.quit.resize(100, 50)
-        self.quit.move(370, 10)
 
         self.showFullScreen()
         self.set_updated()
