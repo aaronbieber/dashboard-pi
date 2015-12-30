@@ -11,6 +11,7 @@ import Queue
 import datetime
 import subprocess
 import bottle
+import socket
 from bottle import Bottle, request, ServerAdapter
 
 
@@ -145,27 +146,40 @@ class Window(QtGui.QWidget):
         palette.setColor(QtGui.QPalette.ButtonText, QtCore.Qt.white)
         self.setPalette(palette)
 
-        self.layout = QtGui.QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 10, 10, 10)
-        self.layout.setSpacing(10)
+        mainlayout = QtGui.QVBoxLayout(self)
+        mainlayout.setContentsMargins(10, 10, 10, 10)
+        mainlayout.setSpacing(10)
+        self.setLayout(mainlayout)
 
         self.title = QtGui.QLabel(self)
         self.title.setTextFormat(QtCore.Qt.RichText)
         self.title.setText(self.get_label_text('Ready!'))
-        self.layout.addWidget(self.title)
+        mainlayout.addWidget(self.title)
 
         self.body = QtGui.QLabel(self)
         self.body.setText('one\ntwo\nthree')
         self.body.setAlignment(QtCore.Qt.AlignTop)
-        self.layout.addWidget(self.body, 1)
+        mainlayout.addWidget(self.body, 1)
 
         self.message = QtGui.QLabel(self)
         self.message.setText('No message.')
-        self.layout.addWidget(self.message)
+        self.message.setStyleSheet('border: 1px solid black; border-bottom-color: #666666; color: white; padding-bottom: 5px')
+        mainlayout.addWidget(self.message)
 
-        self.updated = QtGui.QLabel(self)
-        self.updated.setText('')
-        self.layout.addWidget(self.updated)
+        bottomrow = QtGui.QWidget()
+        bottomrowlayout = QtGui.QHBoxLayout()
+        bottomrowlayout.setSpacing(0)
+        bottomrowlayout.setContentsMargins(0, 0, 0, 0)
+        bottomrow.setLayout(bottomrowlayout)
+
+        self.updated = QtGui.QLabel()
+        bottomrowlayout.addWidget(self.updated)
+
+        self.ip = QtGui.QLabel()
+        self.ip.setAlignment(QtCore.Qt.AlignRight)
+        bottomrowlayout.addWidget(self.ip)
+
+        mainlayout.addWidget(bottomrow)
 
         self.quit = QtGui.QPushButton('Quit', self)
         self.quit.clicked.connect(QtCore.QCoreApplication.instance().quit)
@@ -173,6 +187,14 @@ class Window(QtGui.QWidget):
         self.quit.move(370, 10)
 
         self.showFullScreen()
+        self.set_updated()
+        self.set_ip_address()
+
+    def set_ip_address(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        self.ip.setText('<small>%s</small>' % ip)
 
     def set_updated(self):
         updated_date = datetime.datetime.now()
