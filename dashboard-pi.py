@@ -9,56 +9,96 @@ import requests
 import json
 import Queue
 import datetime
-from bottle import get, post, request, run
+import subprocess
+import bottle
+from bottle import Bottle, request, ServerAdapter
 
-message_q = Queue.Queue()
 
-@get('/message')
-def get_message():
-    return '''
-    <html>
-    <style>
-    body { font-family: Helvetica, Arial, sans-serif; }
-    input[type=text] { padding: 0.5em; font-size: larger; width: 600px; }
-    button { padding: 0.5em; font-size: x-large; }
-    </style>
-    <h1>Send Me a Message</h1>
-    <form action="/message" method="POST">
-    <input type="text" maxlength="60" name="message"/>
-    <button name="submit">Send</button>
-    </form>
-    </html>
-    '''
+class StoppableServerAdapter(ServerAdapter):
+    server = None
 
-@post('/message')
-def post_message():
-    if request.params.message:
-        message_q.put(('message', request.params.message))
-        return 'Message sent!'
-    else:
-        return 'You must enter a message, obviously.'
+    def run(self, handler):
+        from wsgiref.simple_server import make_server, WSGIRequestHandler
+        if self.quiet:
+            class QuietHandler(WSGIRequestHandler):
+                def log_request(*args, **kw): pass
+            self.options['handler_class'] = QuietHandler
+        self.server = make_server(self.host, self.port, handler, **self.options)
+        self.server.serve_forever()
 
-@post('/')
-def post_request():
-    data = request.json
+    def stop(self):
+        self.server.shutdown()
 
-    if data:
-        if 'title' in data.keys():
-            message_q.put(('title', urllib.unquote(data['title'])))
 
-        if 'body' in data.keys():
-            body = data['body']
-            if type(body) is list:
-                body = '<br>'.join(body)
+class Server(threading.Thread):
+    def __init__(self, message_q):
+        super(Server, self).__init__()
+        self.app = Bottle()
+        self.server = StoppableServerAdapter(host='0.0.0.0', port=8080)
+        self.queue = message_q
+        self.install_routes()
 
-            message_q.put(('body', urllib.unquote(body)))
+    def install_routes(self):
+        self.app.route('/', method='POST', callback=self.post_index)
+        self.app.route('/message', method='GET', callback=self.get_message)
+        self.app.route('/message', method='POST', callback=self.post_message)
 
-    if request.query.title:
-        message_q.put(('title', urllib.unquote(request.query.title)))
+    def get_index(self):
+        return 'Hello, world.'
 
-    if request.query.body:
-        print(request.query.body)
-        message_q.put(('body', urllib.unquote(request.query.body)))
+    def run(self):
+        try:
+            self.app.run(server=self.server)
+        except Exception,ex:
+            print ex
+
+    def stop(self):
+        print('Shutting down web server.')
+        self.server.stop()
+
+    def get_message(self):
+        return '''
+        <html>
+        <style>
+        body { font-family: Helvetica, Arial, sans-serif; }
+        input[type=text] { padding: 0.5em; font-size: larger; width: 600px; }
+        button { padding: 0.5em; font-size: x-large; }
+        </style>
+        <h1>Send Me a Message</h1>
+        <form action="/message" method="POST">
+        <input type="text" maxlength="60" name="message"/>
+        <button name="submit">Send</button>
+        </form>
+        </html>
+        '''
+
+    def post_message(self):
+        if request.params.message:
+            self.queue.put(('message', request.params.message))
+            return 'Message sent!'
+        else:
+            return 'You must enter a message, obviously.'
+
+    def post_index(self):
+        data = request.json
+
+        if data:
+            if 'title' in data.keys():
+                self.queue.put(('title', urllib.unquote(data['title'])))
+
+            if 'body' in data.keys():
+                body = data['body']
+                if type(body) is list:
+                    body = '<br>'.join(body)
+
+                self.queue.put(('body', urllib.unquote(body)))
+
+        if request.query.title:
+            self.queue.put(('title', urllib.unquote(request.query.title)))
+
+        if request.query.body:
+            print(request.query.body)
+            self.queue.put(('body', urllib.unquote(request.query.body)))
 
 
 class MessageBus(QtCore.QObject):
@@ -87,6 +127,7 @@ class QueueConsumer(threading.Thread):
                     self.bus.set_message.emit(value[1])
 
                 if value[0] == 'command' and value[1] == 'end':
+                    print('Queue consumer is ending.')
                     return
             except Queue.Empty:
                 continue
@@ -141,6 +182,7 @@ class Window(QtGui.QWidget):
     def set_message(self, text):
         self.set_updated()
         self.message.setText(text)
+        subprocess.check_output(['xset', 's', 'reset'])
 
     def get_label_text(self, text):
         return '<span style="font-size: x-large;"><b>%s</b></span>' % text
@@ -160,32 +202,21 @@ class Window(QtGui.QWidget):
         self.bus.set_message.connect(self.set_message)
 
 
-class Main(threading.Thread):
-    def __init__(self):
-        super(Main, self).__init__()
-        self.bus = MessageBus()
-
-        consumer = QueueConsumer(message_q, self.bus)
-        consumer.start()
-        print('Started queue consumer thread.')
-
-    def run(self):
-        app = QtGui.QApplication(sys.argv)
-        win = Window()
-        win.connect_bus(self.bus)
-        app.exec_()
-        return
-
-
 if __name__ == '__main__':
-    t = Main()
-    t.start()
-    print('Started GUI thread.')
+    message_bus = MessageBus()
+    message_q = Queue.Queue()
 
-    run(host='0.0.0.0', port=8080)
+    server = Server(message_q)
+    server.start()
+    print('Started web server thread.')
 
-    # Bottle will loop forever; when interrupted, we'll wind up here
-    # and kill our thread by passing the end command.
+    consumer = QueueConsumer(message_q, message_bus)
+    consumer.start()
+    print('Started queue consumer thread.')
+
+    app = QtGui.QApplication(sys.argv)
+    win = Window()
+    win.connect_bus(message_bus)
+    app.exec_()
     message_q.put(('command', 'end'))
-
-    print('Process ended.')
+    server.stop()
