@@ -51,7 +51,7 @@ class Dashboard(object):
         resp = requests.get('http://download.finance.yahoo.com/d/quotes.csv?s=%s&f=l1c1' % symbol)
         if resp.status_code == 200:
             parts = resp.text.split(',')
-            return (parts[0], parts[1])
+            return (parts[0].strip(), parts[1].strip())
 
     def refresh(self, signum, frame):
         print('Purging cache and refreshing...')
