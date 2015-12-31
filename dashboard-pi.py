@@ -146,6 +146,7 @@ class Window(QtGui.QWidget):
                             'QLabel {'
                             '  color: white;'
                             '  font-family: "DejaVu Sans";'
+                            '  font-weight: normal;'
                             '}'))
 
         # Main window
