@@ -5,8 +5,6 @@ from PyQt4 import QtGui, QtCore
 import threading
 import urllib
 import sys
-import requests
-import json
 import Queue
 import datetime
 import subprocess
@@ -22,7 +20,8 @@ class StoppableServerAdapter(ServerAdapter):
         from wsgiref.simple_server import make_server, WSGIRequestHandler
         if self.quiet:
             class QuietHandler(WSGIRequestHandler):
-                def log_request(*args, **kw): pass
+                def log_request(*args, **kw):
+                    pass
             self.options['handler_class'] = QuietHandler
         self.server = make_server(self.host, self.port, handler, **self.options)
         self.server.serve_forever()
@@ -50,7 +49,7 @@ class Server(threading.Thread):
     def run(self):
         try:
             self.app.run(server=self.server)
-        except Exception,ex:
+        except Exception, ex:
             print ex
 
     def stop(self):
@@ -181,7 +180,9 @@ class Window(QtGui.QWidget):
 
         self.message = QtGui.QLabel(self)
         self.message.setText('No message.')
-        self.message.setStyleSheet('border: 1px solid black; border-bottom-color: #666666; color: white; padding-bottom: 5px')
+        self.message.setStyleSheet(('border: 1px solid black; '
+                                    'border-bottom-color: #666666; '
+                                    'color: white; padding-bottom: 5px'))
         mainlayout.addWidget(self.message)
 
         # Bottom row (updated timestamp + IP)
