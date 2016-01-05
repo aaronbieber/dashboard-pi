@@ -98,10 +98,10 @@ class Updater(object):
         self.dashboard = Dashboard()
         self.running = False
         self.last_run = None
+        self.update_delay = 600
 
     def start(self, delay=0):
         t = threading.Thread(name='Updater', target=self.run, args=(delay,))
-        self.last_run = int(time.time())
         t.start()
 
     def run(self, delay):
@@ -109,16 +109,19 @@ class Updater(object):
         time.sleep(delay)
 
         while self.running:
-            if int(time.time()) - self.last_run > 5:
+            if self.last_run is None or \
+               int(time.time()) - self.last_run >= self.update_delay:
+
                 self.last_run = int(time.time())
                 data = self.dashboard.update()
                 pprint(data)
-                message_q.put(data)
+                message_q.put(('data', data))
 
-                # Courtesy sleep. Think of the CPUs.
-                time.sleep(0.5)
+            # Courtesy sleep. Think of the CPUs.
+            time.sleep(1)
 
     def stop(self):
+        print('Updater thread is ending.')
         self.running = False
 
 
@@ -148,12 +151,8 @@ class Server(threading.Thread):
         self.install_routes()
 
     def install_routes(self):
-        self.app.route('/', method='POST', callback=self.post_index)
-        self.app.route('/message', method='GET', callback=self.get_message)
-        self.app.route('/message', method='POST', callback=self.post_message)
-
-    def get_index(self):
-        return 'Hello, world.'
+        self.app.route('/', method='GET', callback=self.get_message)
+        self.app.route('/', method='POST', callback=self.post_message)
 
     def run(self):
         try:
@@ -174,7 +173,7 @@ class Server(threading.Thread):
         button { padding: 0.5em; font-size: x-large; }
         </style>
         <h1>Send Me a Message</h1>
-        <form action="/message" method="POST">
+        <form action="/" method="POST">
         <input type="text" maxlength="60" name="message"/>
         <button name="submit">Send</button>
         </form>
@@ -187,27 +186,6 @@ class Server(threading.Thread):
             return 'Message sent!'
         else:
             return 'You must enter a message, obviously.'
-
-    def post_index(self):
-        data = request.json
-
-        if data:
-            if 'title' in data.keys():
-                self.queue.put(('title', urllib.unquote(data['title'])))
-
-            if 'body' in data.keys():
-                body = data['body']
-                if type(body) is list:
-                    body = '<br>'.join(body)
-
-                self.queue.put(('body', urllib.unquote(body)))
-
-        if request.query.title:
-            self.queue.put(('title', urllib.unquote(request.query.title)))
-
-        if request.query.body:
-            print(request.query.body)
-            self.queue.put(('body', urllib.unquote(request.query.body)))
 
 
 class MessageBus(QtCore.QObject):
@@ -230,9 +208,9 @@ class QueueConsumer(threading.Thread):
             try:
                 value = self.queue.get_nowait()
 
-                if type(value) is dict:
-                    self.bus.set_title.emit(value['title'])
-                    self.bus.set_body.emit('<br>'.join(value['body']))
+                if value[0] == 'data':
+                    self.bus.set_title.emit(value[1]['title'])
+                    self.bus.set_body.emit('<br>'.join(value[1]['body']))
 
                 #if value[0] == 'title':
                 #    self.bus.set_title.emit(value[1])
@@ -240,8 +218,8 @@ class QueueConsumer(threading.Thread):
                 #if value[0] == 'body':
                 #    self.bus.set_body.emit(value[1])
 
-                #if value[0] == 'message':
-                #    self.bus.set_message.emit(value[1])
+                if value[0] == 'message':
+                    self.bus.set_message.emit(value[1])
 
                 # if value[0] == 'command' and value[1] == 'end':
                 #     print('Queue consumer is ending.')
@@ -249,7 +227,10 @@ class QueueConsumer(threading.Thread):
             except Queue.Empty:
                 continue
 
+            time.sleep(1)
+
     def stop(self):
+        print('Queue consumer thread is ending.')
         self.running = False
 
 
@@ -365,16 +346,16 @@ if __name__ == '__main__':
     message_bus = MessageBus()
     message_q = Queue.Queue()
 
-    # server = Server(message_q)
-    # server.start()
-    # print('Started web server thread.')
+    server = Server(message_q)
+    server.start()
+    print('Started web server thread.')
 
     consumer = QueueConsumer(message_q, message_bus)
     consumer.start()
     print('Started queue consumer thread.')
 
     updater = Updater(message_q)
-    updater.start()
+    updater.start(3)
     print('Started updater thread.')
 
     app = QtGui.QApplication(sys.argv)
@@ -385,4 +366,4 @@ if __name__ == '__main__':
 
     updater.stop()
     consumer.stop()
-    # server.stop()
+    server.stop()
