@@ -2,15 +2,124 @@
 # -*- coding: utf-8 -*-
 
 from PyQt4 import QtGui, QtCore
-import threading
-import urllib
-import sys
+from bottle import Bottle, request, ServerAdapter
 import Queue
 import datetime
-import subprocess
-import bottle
+import pyfscache
+import requests
+import signal
 import socket
-from bottle import Bottle, request, ServerAdapter
+import subprocess
+import sys
+import textwrap
+import threading
+import time
+import urllib
+from pprint import pprint
+
+
+# Define our local caching decorator.
+cache = pyfscache.FSCache('cache', minutes=30)
+
+
+class Dashboard(object):
+    """
+    Gather data from the Interonlinewebnets and post it to a
+    separately running dashboard program via HTTP.
+    """
+
+    def __init__(self):
+        """Regular constructor."""
+        # Handle INT specially
+        # signal.signal(signal.SIGHUP, self.refresh)
+        # signal.signal(signal.SIGINT, self.close)
+
+    def __reduce__(self):
+        """Prevent pyfscache from attempting to pickle the thread this
+        runs in.
+        """
+        return (self.__class__, ())
+
+    def get_fortune(self):
+        """Get a `fortune' from the local fortune program."""
+        fortune = subprocess.check_output(['fortune', '-s'])
+        fortune = textwrap.wrap(fortune.replace('\n', ' '), 60)
+        return '<br>'.join(fortune)
+
+    @cache
+    def get_weather(self):
+        """Get the (my) local weather."""
+        payload = {'q': 'Brookline,MA',
+                   'units': 'imperial',
+                   'APPID': '60bb49289f303baf72322f1f114e1790'}
+        resp = requests.get('http://api.openweathermap.org/data/2.5/weather', params=payload)
+        if resp.status_code == 200:
+            data = resp.json()
+            return (int(round(data['main']['temp'])),
+                    int(round(data['main']['temp_max'])),
+                    int(round(data['main']['temp_min'])),
+                    ' / '.join([c['main'] for c in data['weather']]))
+
+    @cache
+    def get_stock_price(self, symbol):
+        resp = requests.get('http://download.finance.yahoo.com/d/quotes.csv?s=%s&f=l1c1' % symbol)
+        if resp.status_code == 200:
+            parts = resp.text.split(',')
+            return (parts[0], parts[1])
+
+    def refresh(self, signum, frame):
+        print('Purging cache and refreshing...')
+        cache.purge()
+        self.update()
+        self.wait_and_update()
+
+    def larger(self, text):
+        return u'<font size="+1">%s</font>' % text
+
+    def update(self):
+        stock = self.get_stock_price('W')
+        stock_color = 'limegreen' if stock[1][0] == '+' else 'crimson'
+        stock_icon = u'☺' if stock[1][0] == '+' else u'☹'
+        weather = self.get_weather()
+
+        data = {'title': 'Your Dashboard',
+                'body': [self.larger(u'%s <b>W:</b> $%s (<font color="%s">%s</font>)' % (stock_icon, stock[0], stock_color, stock[1])),
+                         self.larger(u'☂ <b>Temp:</b> %s&#8457; (%s/%s), %s' % (weather[0], weather[1], weather[2], weather[3])),
+                         u'',
+                         self.get_fortune()]}
+
+        return data
+
+
+class Updater(object):
+    def __init__(self, message_q):
+        super(Updater, self).__init__()
+        self.queue = message_q
+        self.dashboard = Dashboard()
+        self.running = False
+        self.last_run = None
+
+    def start(self, delay=0):
+        t = threading.Thread(name='Updater', target=self.run, args=(delay,))
+        self.last_run = int(time.time())
+        t.start()
+
+    def run(self, delay):
+        self.running = True
+        time.sleep(delay)
+
+        while self.running:
+            if int(time.time()) - self.last_run > 5:
+                self.last_run = int(time.time())
+                data = self.dashboard.update()
+                pprint(data)
+                message_q.put(data)
+
+                # Courtesy sleep. Think of the CPUs.
+                time.sleep(0.5)
+
+    def stop(self):
+        self.running = False
 
 
 class StoppableServerAdapter(ServerAdapter):
@@ -112,31 +221,43 @@ class QueueConsumer(threading.Thread):
         super(QueueConsumer, self).__init__()
         self.queue = message_q
         self.bus = message_bus
+        self.running = False
 
     def run(self):
-        while True:
+        self.running = True
+
+        while self.running:
             try:
                 value = self.queue.get_nowait()
-                if value[0] == 'title':
-                    self.bus.set_title.emit(value[1])
 
-                if value[0] == 'body':
-                    self.bus.set_body.emit(value[1])
+                if type(value) is dict:
+                    self.bus.set_title.emit(value['title'])
+                    self.bus.set_body.emit('<br>'.join(value['body']))
 
-                if value[0] == 'message':
-                    self.bus.set_message.emit(value[1])
+                #if value[0] == 'title':
+                #    self.bus.set_title.emit(value[1])
 
-                if value[0] == 'command' and value[1] == 'end':
-                    print('Queue consumer is ending.')
-                    return
+                #if value[0] == 'body':
+                #    self.bus.set_body.emit(value[1])
+
+                #if value[0] == 'message':
+                #    self.bus.set_message.emit(value[1])
+
+                # if value[0] == 'command' and value[1] == 'end':
+                #     print('Queue consumer is ending.')
+                #     return
             except Queue.Empty:
                 continue
+
+    def stop(self):
+        self.running = False
 
 
 class Window(QtGui.QWidget):
     def __init__(self):
         super(Window, self).__init__()
 
+        self.resize(500, 500)
         self.setObjectName('mainWindow')
         self.setWindowTitle('My Dashboard')
         self.setStyleSheet(('#mainWindow {'
@@ -201,7 +322,8 @@ class Window(QtGui.QWidget):
 
         mainlayout.addWidget(bottomrow)
 
-        self.showFullScreen()
+        # self.showFullScreen()
+        self.show()
         self.set_updated()
         self.set_ip_address()
 
@@ -243,17 +365,24 @@ if __name__ == '__main__':
     message_bus = MessageBus()
     message_q = Queue.Queue()
 
-    server = Server(message_q)
-    server.start()
-    print('Started web server thread.')
+    # server = Server(message_q)
+    # server.start()
+    # print('Started web server thread.')
 
     consumer = QueueConsumer(message_q, message_bus)
     consumer.start()
     print('Started queue consumer thread.')
+
+    updater = Updater(message_q)
+    updater.start()
+    print('Started updater thread.')
 
     app = QtGui.QApplication(sys.argv)
     win = Window()
     win.connect_bus(message_bus)
     app.exec_()
     message_q.put(('command', 'end'))
-    server.stop()
+
+    updater.stop()
+    consumer.stop()
+    # server.stop()
