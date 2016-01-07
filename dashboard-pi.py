@@ -55,17 +55,18 @@ class Dashboard(object):
         resp = requests.get('http://api.openweathermap.org/data/2.5/weather', params=payload)
         if resp.status_code == 200:
             data = resp.json()
-            return (int(round(data['main']['temp'])),
-                    int(round(data['main']['temp_max'])),
-                    int(round(data['main']['temp_min'])),
-                    ' / '.join([c['main'] for c in data['weather']]))
+            return {'temp': int(round(data['main']['temp'])),
+                    'high': int(round(data['main']['temp_max'])),
+                    'low': int(round(data['main']['temp_min'])),
+                    'conditions': ' / '.join([c['main'] for c in data['weather']]),
+                    'icon': data['weather'][0]['icon']}
 
     @cache
     def get_stock_price(self, symbol):
         resp = requests.get('http://download.finance.yahoo.com/d/quotes.csv?s=%s&f=l1c1' % symbol)
         if resp.status_code == 200:
             parts = resp.text.split(',')
-            return (parts[0], parts[1])
+            return (parts[0].strip(), parts[1].strip())
 
     def refresh(self, signum, frame):
         print('Purging cache and refreshing...')
@@ -83,11 +84,12 @@ class Dashboard(object):
         weather = self.get_weather()
 
         data = {'title': 'Your Dashboard',
+                'weather': self.get_weather(),
                 'body': [self.larger(u'%s <b>W:</b> $%s (<font color="%s">%s</font>)' % (stock_icon, stock[0], stock_color, stock[1])),
-                         self.larger(u'☂ <b>Temp:</b> %s&#8457; (%s/%s), %s' % (weather[0], weather[1], weather[2], weather[3])),
                          u'',
                          self.get_fortune()]}
 
+        data['body'] = '<br>'.join(data['body'])
         return data
 
 
@@ -192,6 +194,7 @@ class MessageBus(QtCore.QObject):
     set_title = QtCore.pyqtSignal(str)
     set_body = QtCore.pyqtSignal(str)
     set_message = QtCore.pyqtSignal(str)
+    set_weather = QtCore.pyqtSignal(dict)
 
 
 class QueueConsumer(threading.Thread):
@@ -209,8 +212,18 @@ class QueueConsumer(threading.Thread):
                 value = self.queue.get_nowait()
 
                 if value[0] == 'data':
-                    self.bus.set_title.emit(value[1]['title'])
-                    self.bus.set_body.emit('<br>'.join(value[1]['body']))
+                    data = value[1]
+                    for field in data:
+                        method_name = 'set_%s' % field
+                        print('Should use %s()' % method_name)
+                        if method_name in dir(self.bus):
+                            print('Found a method "%s"' % method_name)
+                            getattr(self.bus, method_name).emit(data[field])
+                            #     self.bus.set_title.emit(value[1]['title'])
+                            #     self.bus.set_body.emit('<br>'.join(value[1]['body']))
+
+                # if value[0] == 'weather':
+                #     self.bus.set_weather.emit(value[1])
 
                 #if value[0] == 'title':
                 #    self.bus.set_title.emit(value[1])
@@ -218,8 +231,8 @@ class QueueConsumer(threading.Thread):
                 #if value[0] == 'body':
                 #    self.bus.set_body.emit(value[1])
 
-                if value[0] == 'message':
-                    self.bus.set_message.emit(value[1])
+                # if value[0] == 'message':
+                #     self.bus.set_message.emit(value[1])
 
                 # if value[0] == 'command' and value[1] == 'end':
                 #     print('Queue consumer is ending.')
@@ -274,6 +287,26 @@ class Window(QtGui.QWidget):
 
         mainlayout.addWidget(toprow)
 
+        # Weather row
+        weather = QtGui.QWidget()
+        weatherlayout = QtGui.QHBoxLayout()
+        weatherlayout.setSpacing(0)
+        weatherlayout.setContentsMargins(0, 0, 0, 0)
+        weather.setLayout(weatherlayout)
+
+        self.weather_icon = QtGui.QLabel()
+        pixmap = QtGui.QPixmap('weather_icons/01d.png')
+        self.weather_icon.setPixmap(pixmap)
+        weatherlayout.addWidget(self.weather_icon)
+
+        self.weather_text = QtGui.QLabel()
+        self.weather_text.setStyleSheet('padding-left: 7px')
+        self.weather_text.setTextFormat(QtCore.Qt.RichText)
+        self.weather_text.setText('Waiting...')
+        weatherlayout.addWidget(self.weather_text, 1)
+
+        mainlayout.addWidget(weather)
+
         # Main window widgets
         self.body = QtGui.QLabel(self)
         self.body.setText('one\ntwo\nthree')
@@ -303,8 +336,8 @@ class Window(QtGui.QWidget):
 
         mainlayout.addWidget(bottomrow)
 
-        # self.showFullScreen()
-        self.show()
+        self.showFullScreen()
+        # self.show()
         self.set_updated()
         self.set_ip_address()
 
@@ -335,12 +368,30 @@ class Window(QtGui.QWidget):
         self.set_updated()
         self.body.setText(text)
 
+    def set_weather(self, weather):
+        weather_text = (u'<font size="+3">'
+                        u'<span style="margin-right: 10px;">'
+                        u'{0}&#8457;</font></span> '
+
+                        u'<font size="+2">↑{1} ↓{2} </font> '
+
+                        u'<font color="#cfcfcf">{3}</font>').format(
+                            weather['temp'], weather['high'],
+                            weather['low'], weather['conditions'])
+
+        self.weather_text.setText(weather_text)
+
+        icon_name = weather['icon'].replace('n', 'd')
+        print("using icon name %s" % icon_name)
+        pixmap = QtGui.QPixmap('weather_icons/%s.png' % icon_name)
+        self.weather_icon.setPixmap(pixmap)
+
     def connect_bus(self, message_bus):
         self.bus = message_bus
         self.bus.set_title.connect(self.set_title)
         self.bus.set_body.connect(self.set_body)
         self.bus.set_message.connect(self.set_message)
-
+        self.bus.set_weather.connect(self.set_weather)
 
 if __name__ == '__main__':
     message_bus = MessageBus()
