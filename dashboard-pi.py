@@ -215,28 +215,9 @@ class QueueConsumer(threading.Thread):
                     data = value[1]
                     for field in data:
                         method_name = 'set_%s' % field
-                        print('Should use %s()' % method_name)
                         if method_name in dir(self.bus):
-                            print('Found a method "%s"' % method_name)
                             getattr(self.bus, method_name).emit(data[field])
-                            #     self.bus.set_title.emit(value[1]['title'])
-                            #     self.bus.set_body.emit('<br>'.join(value[1]['body']))
 
-                # if value[0] == 'weather':
-                #     self.bus.set_weather.emit(value[1])
-
-                #if value[0] == 'title':
-                #    self.bus.set_title.emit(value[1])
-
-                #if value[0] == 'body':
-                #    self.bus.set_body.emit(value[1])
-
-                # if value[0] == 'message':
-                #     self.bus.set_message.emit(value[1])
-
-                # if value[0] == 'command' and value[1] == 'end':
-                #     print('Queue consumer is ending.')
-                #     return
             except Queue.Empty:
                 continue
 
@@ -336,8 +317,8 @@ class Window(QtGui.QWidget):
 
         mainlayout.addWidget(bottomrow)
 
-        self.showFullScreen()
-        # self.show()
+        # self.showFullScreen()
+        self.show()
         self.set_updated()
         self.set_ip_address()
 
@@ -381,7 +362,7 @@ class Window(QtGui.QWidget):
 
         self.weather_text.setText(weather_text)
 
-        icon_name = weather['icon'].replace('n', 'd')
+        icon_name = weather['icon']
         print("using icon name %s" % icon_name)
         pixmap = QtGui.QPixmap('weather_icons/%s.png' % icon_name)
         self.weather_icon.setPixmap(pixmap)
