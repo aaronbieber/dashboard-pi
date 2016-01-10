@@ -387,7 +387,7 @@ if __name__ == '__main__':
     print('Started queue consumer thread.')
 
     updater = Updater(message_q)
-    updater.start(3)
+    updater.start(5)
     print('Started updater thread.')
 
     app = QtGui.QApplication(sys.argv)
