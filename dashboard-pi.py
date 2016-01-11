@@ -317,8 +317,8 @@ class Window(QtGui.QWidget):
 
         mainlayout.addWidget(bottomrow)
 
-        # self.showFullScreen()
-        self.show()
+        self.showFullScreen()
+        # self.show()
         self.set_updated()
         self.set_ip_address()
 
