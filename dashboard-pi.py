@@ -232,7 +232,7 @@ class Window(QtGui.QWidget):
     def __init__(self):
         super(Window, self).__init__()
 
-        self.resize(500, 500)
+        # self.resize(500, 500)
         self.setObjectName('mainWindow')
         self.setWindowTitle('My Dashboard')
         self.setStyleSheet(('#mainWindow {'
