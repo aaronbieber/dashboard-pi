@@ -184,7 +184,7 @@ class Server(threading.Thread):
 
     def post_message(self):
         if request.params.message:
-            self.queue.put(('message', request.params.message))
+            self.queue.put(('data', {'message': request.params.message}))
             return 'Message sent!'
         else:
             return 'You must enter a message, obviously.'
